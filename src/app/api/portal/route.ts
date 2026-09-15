@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     return response({
       user: { name: u.displayName, email: u.email, role: u.role },
       profile: profileResult.Item ? (typeof profileResult.Item.data === 'string' ? JSON.parse(profileResult.Item.data) : profileResult.Item.data) : {},
-      applications: apps.sort((a, b) => String(b.updated ?? '').localeCompare(String(a.updated ?? ''))),
+      applications: (apps as any[]).sort((a, b) => String(b.updated ?? '').localeCompare(String(a.updated ?? ''))),
       documents: (docsResult.Items || []).sort((a, b) => b.created.localeCompare(a.created)),
       activity: (actResult.Items || []).sort((a, b) => b.created.localeCompare(a.created)),
     });

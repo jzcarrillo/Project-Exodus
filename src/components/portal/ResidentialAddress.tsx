@@ -26,7 +26,7 @@ export default function ResidentialAddress({data,onChange,required=true}:{data:A
       .catch(e=>{if(e.name!=='AbortError')setError('Could not load barangays. Please try again.');});
     return()=>controller.abort();
   },[province?.code,retry]);
-  const barangays=loaded?.province===province?.code&&city?loaded.items[city.code]||[]:[];
+  const barangays=loaded?.province===province?.code&&city?(loaded as NonNullable<typeof loaded>).items[city.code]||[]:[];
   const barangay=barangays.find(b=>b.code===data.barangayCode)||barangays.find(b=>b.name===data.barangay)||null;
   const isLoading=!!province&&loaded?.province!==province.code&&!error;
   const suffix=required?' *':'';
