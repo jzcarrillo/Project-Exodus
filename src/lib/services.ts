@@ -25,7 +25,6 @@ export const validateApplication=(service:string,data:Record<string,string>)=>{
  const s=services.find(s=>s.id===service);if(!s)return ['Unknown service'];
  return s.sections.flatMap(s=>s.fields).flatMap(f=>{
  const value=data[f.key]?.trim();if(!value)return f.required?[f.label]:[];
- if((f.key==='passportNumber'||f.key==='guardianPassport')&&value.length!==9)return [f.label+' must be exactly 9 characters'];
  if(f.options&&!f.options.includes(value))return [f.label+' (invalid option)'];
  if(f.type==='email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))return [f.label+' (invalid email)'];
  if(f.type==='date'&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||Number.isNaN(Date.parse(value))))return [f.label+' (invalid date)'];
