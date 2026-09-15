@@ -22,7 +22,7 @@ export default function ResidentialAddress({data,onChange,required=true}:{data:A
     const controller=new AbortController();
     fetch('/addresses/'+province.code+'.json',{signal:controller.signal})
       .then(r=>{if(!r.ok)throw new Error('Could not load barangays.');return r.json()})
-      .then((items: Record<string,Option[]>)=>{if(!controller.signal.aborted)setLoaded({province:province.code,items});})
+      .then((items: Record<string,Option[]>)=>{if(!controller.signal.aborted)setLoaded({province:province!.code,items});})
       .catch(e=>{if(e.name!=='AbortError')setError('Could not load barangays. Please try again.');});
     return()=>controller.abort();
   },[province?.code,retry]);
