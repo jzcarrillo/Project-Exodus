@@ -16,9 +16,6 @@ outputs/
 .env.*
 !.env.example
 
-# openai hosting config (may contain secrets)
-.openai/
-
 # generated
 tsconfig.tsbuildinfo
 
