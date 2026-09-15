@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build outputs
+.next/
+dist/
+outputs/
+
+# wrangler / cloudflare local state
+.wrangler/
+.sites-runtime/
+.vinext/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# openai hosting config (may contain secrets)
+.openai/
+
+# generated
+tsconfig.tsbuildinfo
+
+# OS
+.DS_Store

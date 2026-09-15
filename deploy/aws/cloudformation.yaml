@@ -1,0 +1,366 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Bureau of Immigration eServices - Complete AWS ECS Fargate, DynamoDB, S3, and ALB Stack'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: 'production'
+    Description: 'Deployment environment name (e.g. production, staging)'
+
+  TablePrefix:
+    Type: String
+    Default: 'BI_'
+    Description: 'DynamoDB table name prefix'
+
+  ReviewerEmails:
+    Type: String
+    Default: 'reviewer@bi.gov.ph,officer@bi.gov.ph'
+    Description: 'Comma-separated authorized reviewer email list'
+
+  BackendImage:
+    Type: String
+    Default: '123456789012.dkr.ecr.ap-southeast-1.amazonaws.com/bi-backend:latest'
+    Description: 'ECR URI for the NestJS Backend container image'
+
+  FrontendImage:
+    Type: String
+    Default: '123456789012.dkr.ecr.ap-southeast-1.amazonaws.com/bi-frontend:latest'
+    Description: 'ECR URI for the Frontend container image'
+
+Resources:
+  # ==========================================
+  # 1. Amazon S3 Document Storage
+  # ==========================================
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'bi-eservices-documents-${AWS::AccountId}-${AWS::Region}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ==========================================
+  # 2. Amazon Cognito User Pool & App Client
+  # ==========================================
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${EnvironmentName}-bi-eservices-users'
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 6
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: given_name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+        - Name: family_name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+        - Name: phone_number
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${EnvironmentName}-bi-eservices-client'
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  # ==========================================
+  # 3. Amazon DynamoDB Tables
+  # ==========================================
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}Users'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+
+  ApplicationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}Applications'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: owner
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: updated
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: owner-updated-index
+          KeySchema:
+            - AttributeName: owner
+              KeyType: HASH
+            - AttributeName: updated
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: status-updated-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: updated
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  ProfilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}Profiles'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: owner
+          AttributeType: S
+      KeySchema:
+        - AttributeName: owner
+          KeyType: HASH
+
+  DocumentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}Documents'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: owner
+          AttributeType: S
+        - AttributeName: application
+          AttributeType: S
+        - AttributeName: created
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: application-index
+          KeySchema:
+            - AttributeName: application
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: owner-created-index
+          KeySchema:
+            - AttributeName: owner
+              KeyType: HASH
+            - AttributeName: created
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  ActivityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}Activity'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: owner
+          AttributeType: S
+        - AttributeName: application
+          AttributeType: S
+        - AttributeName: created
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: owner-created-index
+          KeySchema:
+            - AttributeName: owner
+              KeyType: HASH
+            - AttributeName: created
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: application-index
+          KeySchema:
+            - AttributeName: application
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # ==========================================
+  # 3. IAM Roles for ECS Tasks
+  # ==========================================
+  EcsTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'bi-eservices-execution-role-${AWS::Region}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  EcsTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'bi-eservices-task-role-${AWS::Region}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DynamoDBAndS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt ApplicationsTable.Arn
+                  - !Sub '${ApplicationsTable.Arn}/index/*'
+                  - !GetAtt ProfilesTable.Arn
+                  - !GetAtt DocumentsTable.Arn
+                  - !Sub '${DocumentsTable.Arn}/index/*'
+                  - !GetAtt ActivityTable.Arn
+                  - !Sub '${ActivityTable.Arn}/index/*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub '${DocumentsBucket.Arn}/*'
+
+  # ==========================================
+  # 4. ECS Cluster & Task Definitions
+  # ==========================================
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: bi-eservices-cluster
+
+  EcsTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: bi-eservices-stack
+      Cpu: '1024'
+      Memory: '2048'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt EcsTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt EcsTaskRole.Arn
+      ContainerDefinitions:
+        - Name: backend
+          Image: !Ref BackendImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 4000
+          Environment:
+            - Name: PORT
+              Value: '4000'
+            - Name: NODE_ENV
+              Value: 'production'
+            - Name: DB_PROVIDER
+              Value: 'dynamodb'
+            - Name: DYNAMODB_TABLE_PREFIX
+              Value: !Ref TablePrefix
+            - Name: STORAGE_PROVIDER
+              Value: 's3'
+            - Name: AWS_S3_BUCKET
+              Value: !Ref DocumentsBucket
+            - Name: AWS_REGION
+              Value: !Ref 'AWS::Region'
+            - Name: BI_REVIEWER_EMAILS
+              Value: !Ref ReviewerEmails
+            - Name: AUTH_PROVIDER
+              Value: 'cognito'
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
+
+        - Name: frontend
+          Image: !Ref FrontendImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 5173
+          Environment:
+            - Name: PORT
+              Value: '5173'
+            - Name: HOST
+              Value: '0.0.0.0'
+            - Name: BACKEND_URL
+              Value: 'http://localhost:4000'
+
+Outputs:
+  CognitoUserPoolId:
+    Description: 'Cognito User Pool ID'
+    Value: !Ref CognitoUserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-CognitoUserPoolId'
+
+  CognitoClientId:
+    Description: 'Cognito User Pool App Client ID'
+    Value: !Ref CognitoUserPoolClient
+    Export:
+      Name: !Sub '${AWS::StackName}-CognitoClientId'
+
+  S3BucketName:
+    Description: 'Created S3 Documents Bucket Name'
+    Value: !Ref DocumentsBucket
+
+  ApplicationsTableName:
+    Description: 'Applications DynamoDB Table Name'
+    Value: !Ref ApplicationsTable
+
+  ECSClusterName:
+    Description: 'ECS Fargate Cluster Name'
+    Value: !Ref EcsCluster
