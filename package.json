@@ -6,12 +6,6 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-<<<<<<< HEAD
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
-=======
     "dev": "node scripts/dev-all.mjs",
     "dev:frontend": "npm --prefix frontend run dev",
     "dev:backend": "npm --prefix backend run start:dev",
@@ -26,7 +20,6 @@
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
->>>>>>> 0358027 (Added backend and colors and logo)
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1132.0",

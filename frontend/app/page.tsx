@@ -1,2 +1,2 @@
-import Portal from '@/components/portal/Portal';
+import Portal from './portal';
 export default function Home(){return <Portal/>}
