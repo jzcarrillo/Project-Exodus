@@ -26,14 +26,14 @@ export class PortalService {
     return this.dbService.instance;
   }
 
-  async getPortalData(user: UserIdentity, applicationId?: string, review?: boolean) {
+  async getPortalData(user: UserIdentity, applicationId?: string, review?: boolean, passport?: string) {
     if (this.isDynamo) {
-      return this.getPortalDataDynamo(user, applicationId, review);
+      return this.getPortalDataDynamo(user, applicationId, review, passport);
     }
-    return this.getPortalDataSqlite(user, applicationId, review);
+    return this.getPortalDataSqlite(user, applicationId, review, passport);
   }
 
-  private async getPortalDataDynamo(user: UserIdentity, applicationId?: string, review?: boolean) {
+  private async getPortalDataDynamo(user: UserIdentity, applicationId?: string, review?: boolean, passport?: string) {
     if (applicationId) {
       const app = await this.dynamoService.getApplication(applicationId);
       if (!app || (app.owner !== user.userId && user.role !== 'reviewer')) {
@@ -49,7 +49,9 @@ export class PortalService {
       if (user.role !== 'reviewer') {
         throw new ForbiddenException('A BI reviewer role is required.');
       }
-      const records = await this.dynamoService.queryReviewerQueue(200);
+      const records = passport && passport.trim()
+        ? await this.dynamoService.queryReviewerQueueByPassport(passport.trim())
+        : await this.dynamoService.queryReviewerQueue(200);
       const profile = await this.dynamoService.getProfile(user.userId);
       const documents = await this.dynamoService.queryUserDocuments(user.userId);
       const activity = await this.dynamoService.queryUserActivity(user.userId, 100);
@@ -77,7 +79,7 @@ export class PortalService {
     };
   }
 
-  private async getPortalDataSqlite(user: UserIdentity, applicationId?: string, review?: boolean) {
+  private async getPortalDataSqlite(user: UserIdentity, applicationId?: string, review?: boolean, passport?: string) {
     if (applicationId) {
       const app = this.sqlite.prepare('SELECT * FROM applications WHERE id = ?').get(applicationId) as any;
       if (!app || (app.owner !== user.userId && user.role !== 'reviewer')) {
@@ -95,9 +97,17 @@ export class PortalService {
       if (user.role !== 'reviewer') {
         throw new ForbiddenException('A BI reviewer role is required.');
       }
-      const records = this.sqlite
-        .prepare("SELECT * FROM applications WHERE status != 'Draft' ORDER BY updated DESC LIMIT 200")
-        .all() as any[];
+      let records: any[];
+      if (passport && passport.trim()) {
+        const clean = `%${passport.trim()}%`;
+        records = this.sqlite
+          .prepare("SELECT * FROM applications WHERE status != 'Draft' AND (id LIKE ? OR data LIKE ?) ORDER BY updated DESC LIMIT 100")
+          .all(clean, clean) as any[];
+      } else {
+        records = this.sqlite
+          .prepare("SELECT * FROM applications WHERE status != 'Draft' ORDER BY updated DESC LIMIT 200")
+          .all() as any[];
+      }
 
       const profile = this.sqlite.prepare('SELECT data FROM profiles WHERE owner = ?').get(user.userId) as any;
       const documents = this.sqlite.prepare('SELECT * FROM documents WHERE owner = ? ORDER BY created DESC').all(user.userId);

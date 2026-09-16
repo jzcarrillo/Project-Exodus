@@ -57,13 +57,7 @@ export class AuthGuard implements CanActivate {
       };
     }
 
-    // 3. Default fallback user for open preview dev if nothing provided
-    return {
-      userId: 'applicant@example.com',
-      email: 'applicant@example.com',
-      displayName: 'Applicant User',
-      role: 'applicant',
-    };
+    return null;
   }
 }
 

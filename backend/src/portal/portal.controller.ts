@@ -30,12 +30,14 @@ export class PortalController {
   @ApiOperation({ summary: 'Get current user applications, profile, documents, and notifications' })
   @ApiQuery({ name: 'application', required: false })
   @ApiQuery({ name: 'review', required: false })
+  @ApiQuery({ name: 'passport', required: false })
   async getPortal(
     @CurrentUser() user: UserIdentity,
     @Query('application') application?: string,
     @Query('review') review?: string,
+    @Query('passport') passport?: string,
   ) {
-    return this.portalService.getPortalData(user, application, review === '1');
+    return this.portalService.getPortalData(user, application, review === '1', passport);
   }
 
   @Post()

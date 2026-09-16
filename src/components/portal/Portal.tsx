@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { LayoutDashboard, Files, Grid2X2, CreditCard, FolderOpen, Bell, UserRound, ShieldCheck, ArrowUpRight, ArrowRight, ArrowLeft, Plane, GraduationCap, BookOpen, Globe2, Plus, CircleHelp, ChevronRight, Search, Ship, Building2, CalendarDays, Flag, Users, School, Download, Upload, Check, Save, CheckCircle2, LockKeyhole, RefreshCw, LogOut, ClipboardCheck, FileText, Loader2, X } from 'lucide-react';
+import { LayoutDashboard, Files, Grid2X2, CreditCard, FolderOpen, Bell, UserRound, ShieldCheck, ArrowUpRight, ArrowRight, ArrowLeft, Plane, GraduationCap, BookOpen, Globe2, Plus, CircleHelp, ChevronRight, Search, Ship, Building2, CalendarDays, Flag, Users, School, Download, Upload, Check, Save, CheckCircle2, LockKeyhole, RefreshCw, LogOut, ClipboardCheck, FileText, Loader2, X, ScanLine, FileSpreadsheet } from 'lucide-react';
 import { Sidebar, SidebarProvider, SidebarHeader, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxEmpty } from '@/components/ui/combobox';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -13,32 +13,97 @@ import { toast } from 'sonner';
 import { services, validateApplication, type Application, type Field } from '@/lib/services';
 import Overview from '@/components/portal/Overview';
 import ResidentialAddress from '@/components/portal/ResidentialAddress';
+import PassportScannerModal from '@/components/portal/PassportScannerModal';
 const navigation = [[LayoutDashboard,'Overview'],[Grid2X2,'All services'],[Files,'My applications'],[CreditCard,'Payments'],[FolderOpen,'My documents'],[Bell,'Notifications']] as const;
 const icons:Record<string,any>={plane:Plane,globe:Globe2,graduation:GraduationCap,book:BookOpen,ship:Ship,building:Building2,calendar:CalendarDays,school:School,flag:Flag,users:Users};
 const serviceName=(id:string)=>services.find(s=>s.id===id)?.name||id;
 const date=(s:string)=>new Date(s).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'});
 const shortId=(id:string)=>id.slice(0,11).toUpperCase();
-async function api(action:string,data:object={}){const r=await fetch('/api/portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...data})});const value:any=await r.json();if(!r.ok)throw new Error(value.error||'Unable to save. Try again.');return value;}
+async function api(action:string,data:object={}){const r=await fetch('/api/portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...data})});const value:any=await r.json();if(!r.ok){const msg=Array.isArray(value.message)?value.message.join(', '):(value.message||value.error||'Unable to save. Try again.');throw new Error(msg);}return value;}
 function download(content:string,name:string,type='text/plain'){const url=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-export function ApplicationList({applications,onOpen}:{applications:Application[];onOpen:(a:Application)=>void}){return <Table><TableHeader><TableRow><TableHead>Application</TableHead><TableHead>Status</TableHead><TableHead>Last updated</TableHead><TableHead><span className="sr-only">Action</span></TableHead></TableRow></TableHeader><TableBody>{applications.map(a=><TableRow key={a.id}><TableCell><strong>{serviceName(a.service)}</strong><small className="reference">{shortId(a.id)}</small></TableCell><TableCell><span className={'status status-'+a.status.toLowerCase().replaceAll(' ','-')}>{a.status}</span></TableCell><TableCell>{date(a.updated)}</TableCell><TableCell><button className="text-button" aria-label={'Open '+serviceName(a.service)+' '+shortId(a.id)} onClick={()=>onOpen(a)}>{['Draft','For correction'].includes(a.status)?'Continue':'View'}<ChevronRight size={16}/></button></TableCell></TableRow>)}</TableBody></Table>}
+export function ApplicationList({applications,onOpen}:{applications:Application[];onOpen:(a:Application)=>void}){return <Table><TableHeader><TableRow><TableHead>Application</TableHead><TableHead>Status</TableHead><TableHead>Last updated</TableHead><TableHead><span className="sr-only">Action</span></TableHead></TableRow></TableHeader><TableBody>{applications.map(a=>{const name=[a.data?.firstName,a.data?.lastName].filter(Boolean).join(' ');const pass=a.data?.passportNumber||a.data?.guardianPassport;return <TableRow key={a.id}><TableCell><div><strong>{serviceName(a.service)}{name&&<span style={{fontWeight:'normal',color:'#4b617a',marginLeft:'0.4rem'}}>— {name}</span>}</strong></div><div className="flex items-center gap-2 mt-0.5"><small className="reference">{shortId(a.id)}</small>{pass&&<span className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">🛂 {pass}</span>}</div></TableCell><TableCell><span className={'status status-'+a.status.toLowerCase().replaceAll(' ','-')}>{a.status}</span></TableCell><TableCell>{date(a.updated)}</TableCell><TableCell><button className="text-button" aria-label={'Open '+serviceName(a.service)+' '+shortId(a.id)} onClick={()=>onOpen(a)}>{['Draft','For correction'].includes(a.status)?'Continue':'Review'}<ChevronRight size={16}/></button></TableCell></TableRow>})}</TableBody></Table>}
 function SidebarNav({view,onNavigate,unread}:{view:string;onNavigate:(v:string)=>void;unread:number}){const {setOpenMobile}=useSidebar();return <SidebarMenu>{navigation.map(([Icon,label])=><SidebarMenuItem key={label}><SidebarMenuButton isActive={view===label} onClick={()=>{onNavigate(label);setOpenMobile(false)}}><Icon/><span>{label}</span>{label==='Notifications'&&unread>0&&<b className="nav-count">{unread}</b>}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu>}
 export default function Portal(){
 const [view,setView]=useState('Overview'),[applications,setApplications]=useState<Application[]>([]),[documents,setDocuments]=useState<any[]>([]),[activity,setActivity]=useState<any[]>([]),[profile,setProfile]=useState<Record<string,string>>({}),[user,setUser]=useState<any>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[filter,setFilter]=useState('All'),[query,setQuery]=useState(''),[selected,setSelected]=useState<Application|null>(null),[service,setService]=useState<typeof services[number]|null>(null),[data,setData]=useState<Record<string,string>>({}),[step,setStep]=useState(0),[busy,setBusy]=useState(false),[consent,setConsent]=useState(false),[detail,setDetail]=useState<Application|null>(null),[qr,setQr]=useState(''),[reviewApps,setReviewApps]=useState<Application[]>([]),[reviewNote,setReviewNote]=useState(''),[detailDocs,setDetailDocs]=useState<any[]>([]),[detailActivity,setDetailActivity]=useState<any[]>([]);
+const [backOfficeQuery, setBackOfficeQuery] = useState('');
+const [backOfficeStatus, setBackOfficeStatus] = useState('All');
+const [scannerOpen, setScannerOpen] = useState(false);
 const saveLock=useRef(false);
 const refresh=useCallback(async()=>{try{const r=await fetch('/api/portal');const d:any=await r.json();if(!r.ok){if(r.status===401){setUser(null);setError('');return;}throw new Error(d.error)}setUser(d.user);setApplications(d.applications);setDocuments(d.documents);setActivity(d.activity);setProfile(d.profile);setError('')}catch(e){setError(e instanceof Error?e.message:'Could not load your workspace.')}finally{setLoading(false)}},[]);
 useEffect(()=>{refresh();const timer=setInterval(refresh,30000);return()=>clearInterval(timer)},[refresh]);
-const navigate=useCallback((v:string)=>{setView(v);setQuery('');setFilter('All');setService(null);setDetail(null);window.scrollTo({top:0,behavior:'smooth'})},[]);
+const navigate=useCallback((v:string)=>{setView(v);setQuery('');setFilter('All');setService(null);setSelected(null);setDetail(null);setStep(0);window.scrollTo({top:0,behavior:'smooth'})},[]);
 const start=useCallback((name:string)=>{const s=services.find(s=>s.name===name||s.id===name);if(!s)return;setService(s);setSelected(null);setData({...profile,email:user?.email||''});setStep(0);setConsent(false);setView('New application');window.scrollTo({top:0})},[profile,user]);
 useEffect(()=>{const context=(document as any).modelContext;if(!context?.registerTool)return;const controller=new AbortController();try{Promise.resolve(context.registerTool({name:'start_immigration_application',description:'Open the guided application form for a service. Does not save or submit.',inputSchema:{type:'object',properties:{service:{type:'string',enum:services.map(s=>s.id)}},required:['service'],additionalProperties:false},annotations:{readOnlyHint:false},execute:(input:any)=>{if(!input||Object.keys(input).length!==1||!services.some(s=>s.id===input.service))throw new Error('Choose a supported service ID.');start(input.service);return {opened:input.service,submitted:false}}},{signal:controller.signal})).catch(()=>{})}catch{}return()=>controller.abort()},[start]);
 useEffect(()=>{setDetailDocs([]);setDetailActivity([]);if(!detail)return;let active=true;fetch('/api/portal?application='+encodeURIComponent(detail.id)).then(r=>r.json()).then((d:any)=>{if(!active)return;if(d.error){toast.error(d.error);return;}setDetailDocs(d.documents);setDetailActivity(d.activity)}).catch(()=>toast.error('Could not load application history.'));return()=>{active=false}},[detail]);
 useEffect(()=>{setQr('');if(detail?.service==='etravel'&&detail.status!=='Draft'){let cancelled=false;import('qrcode').then(q=>q.toDataURL(JSON.stringify({type:'BI_PREVIEW_ONLY',reference:detail.id}),{width:220,margin:2})).then(url=>{if(!cancelled)setQr(url)});return()=>{cancelled=true}}},[detail]);
-useEffect(()=>{if(view==='Back office'&&user?.role==='reviewer'){fetch('/api/portal?review=1').then(r=>r.json()).then((d:any)=>{if(d.error)toast.error(d.error);else setReviewApps(d.applications)})}},[view,user]);
+const refreshBackOffice = useCallback(async (queryOverride?: string) => {
+  if (user?.role !== 'reviewer') return;
+  try {
+    const qVal = queryOverride !== undefined ? queryOverride : backOfficeQuery;
+    const q = qVal ? `&passport=${encodeURIComponent(qVal.trim())}` : '';
+    const r = await fetch('/api/portal?review=1' + q);
+    const d = await r.json();
+    if (d.error) toast.error(d.error);
+    else setReviewApps(d.applications);
+  } catch {
+    toast.error('Could not load reviewer queue.');
+  }
+}, [user, backOfficeQuery]);
+useEffect(()=>{if(view==='Back office'&&user?.role==='reviewer'){refreshBackOffice();}},[view,user,refreshBackOffice]);
+const filteredReviewApps = reviewApps.filter(a => {
+  const matchesStatus = backOfficeStatus === 'All' || a.status === backOfficeStatus;
+  if (!matchesStatus) return false;
+  if (!backOfficeQuery.trim()) return true;
+  const q = backOfficeQuery.trim().toLowerCase();
+  const pass = (a.data?.passportNumber || a.data?.guardianPassport || '').toLowerCase();
+  const name = `${a.data?.firstName || ''} ${a.data?.lastName || ''}`.toLowerCase();
+  const id = (a.id || '').toLowerCase();
+  const service = serviceName(a.service).toLowerCase();
+  return pass.includes(q) || name.includes(q) || id.includes(q) || service.includes(q);
+});
 const open=(a:Application)=>{if(['Draft','For correction'].includes(a.status)){setSelected(a);setService(services.find(s=>s.id===a.service)!);setData(a.data);setStep(0);setConsent(false);setView('Continue application');}else setDetail(a)};
 async function save(){if(!service)throw new Error('Choose a service.');if(saveLock.current)throw new Error('A save is already in progress.');saveLock.current=true;try{const result=await api('save',{service:service.id,data,id:selected?.id,version:selected?.version});const next={id:result.id,service:service.id,status:selected?.status||'Draft',data,created:selected?.created||new Date().toISOString(),updated:new Date().toISOString(),version:result.version};setSelected(next);await refresh();return next;}finally{saveLock.current=false}}
 async function saveDraft(){setBusy(true);try{await save();toast.success('Draft saved. You can return to it anytime.')}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
-async function uploadFiles(files:FileList|null,kind:string){if(!files?.length)return;setBusy(true);try{const a=await save();if(!a)return;for(const file of Array.from(files)){const max=kind.includes('.xlsx')?101*1024*1024:10*1024*1024;if(file.size>max)throw new Error(file.name+' exceeds the size limit.');const params=new URLSearchParams({application:a.id,kind,name:file.name});const res=await fetch('/api/documents?'+params,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});const result:any=await res.json();if(!res.ok)throw new Error(result.error)}await refresh();toast.success('Documents uploaded.')}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
-async function submit(){setBusy(true);try{if(!consent)throw new Error('Confirm the review statement first.');const a=await save();await api('submit',{id:a!.id});await refresh();navigate('My applications');toast.success('Application submitted to this preview workspace.')}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
+async function uploadFiles(files:FileList|null,kind:string){if(!files?.length)return;setBusy(true);try{let a=selected;if(!a||!a.id){a=await save();}if(!a?.id)throw new Error('Save application draft before uploading documents.');for(const file of Array.from(files)){const max=kind.includes('.xlsx')?101*1024*1024:10*1024*1024;if(file.size>max)throw new Error(file.name+' exceeds the size limit.');const formData=new FormData();formData.append('file',file);formData.append('application',a.id);formData.append('kind',kind);const params=new URLSearchParams({application:a.id,kind,name:file.name});const res=await fetch('/api/documents?'+params,{method:'POST',body:formData});const result:any=await res.json();if(!res.ok)throw new Error(result.error||'Failed to upload file.')}await refresh();toast.success('Documents uploaded.')}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
+async function submit(){setBusy(true);try{if(!consent)throw new Error('Confirm the review statement first.');const a=await save();await api('submit',{id:a!.id});await refresh();navigate('Overview');toast.success('Application submitted to this preview workspace.')}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
 async function template(){const x=await import('xlsx');const wb=x.utils.book_new();x.utils.book_append_sheet(wb,x.utils.aoa_to_sheet([['Given name','Last name','Date of birth (YYYY-MM-DD)','Nationality','Passport number','Passport expiry (YYYY-MM-DD)','Vessel name','Voyage number','Travel date (YYYY-MM-DD)']]),'Passengers');x.writeFile(wb,'BI-cruise-passenger-template.xlsx')}
+async function exportToExcel(apps: Application[]){
+  if(!apps.length){toast.error('No applications to export.');return;}
+  try{
+    const x=await import('xlsx');
+    const rows=apps.map(a=>{
+      const fullName=[a.data?.firstName,a.data?.middleName,a.data?.lastName].filter(Boolean).join(' ')||'—';
+      const passport=a.data?.passportNumber||a.data?.guardianPassport||'—';
+      const travel=[a.data?.direction,a.data?.flightNumber||a.data?.vesselName,a.data?.travelDate].filter(Boolean).join(' · ')||'—';
+      const port=a.data?.port||a.data?.portOfArrival||a.data?.portOfDeparture||'—';
+      return {
+        'Reference No.':a.id,
+        'Service':serviceName(a.service),
+        'Status':a.status,
+        'Passport No.':passport,
+        'Applicant Name':fullName,
+        'Nationality':a.data?.nationality||a.data?.passportCountry||'—',
+        'Date of Birth':a.data?.birthDate||'—',
+        'Gender':a.data?.sex||a.data?.gender||'—',
+        'Email':a.data?.email||'—',
+        'Mobile Number':a.data?.mobileNumber||a.data?.contactNumber||'—',
+        'Travel Details':travel,
+        'Port':port,
+        'Date Submitted':a.created?new Date(a.created).toLocaleString('en-PH'):'—',
+        'Last Updated':a.updated?new Date(a.updated).toLocaleString('en-PH'):'—',
+      };
+    });
+    const ws=x.utils.json_to_sheet(rows);
+    ws['!cols']=[{wch:38},{wch:22},{wch:14},{wch:14},{wch:28},{wch:16},{wch:14},{wch:10},{wch:26},{wch:16},{wch:26},{wch:22},{wch:22},{wch:22}];
+    const wb=x.utils.book_new();
+    x.utils.book_append_sheet(wb,ws,'Queue Applications');
+    const dateStr=new Date().toISOString().slice(0,10);
+    x.writeFile(wb,`BI-application-report-${dateStr}.xlsx`);
+    toast.success('Application report exported to Excel (.xlsx).');
+  }catch(e:any){
+    toast.error('Could not export to Excel: '+(e?.message||'Unknown error'));
+  }
+}
 const title=service?service.name:view==='Overview'?'Welcome to your eServices.':view;
 const subtitle:Record<string,string>={'All services':'Find the right service for your next step.','My applications':'Manage drafts and follow the progress of your applications.','Payments':'View assessments, payment status, and receipts.','My documents':'Your uploaded documents, organized by application.','Notifications':'Application updates and activity in one place.','My profile':'Keep your details ready for your next application.','Back office':'Review, evaluate, and manage submitted applications.','Help center':'A little guidance for every step.'};
 const filtered=applications.filter(a=>(filter==='All'||a.status===filter)&&(serviceName(a.service)+' '+a.id).toLowerCase().includes(query.toLowerCase()));
@@ -51,12 +116,77 @@ return <SidebarProvider><Toaster position="top-right"/><Sidebar><SidebarHeader><
 {view==='Payments'&&<><div className="stats payment-stats">{[['Awaiting payment','0'],['Paid transactions','0'],['Receipts available','0']].map(([label,value])=><div className="stat" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div><section className="panel"><Empty icon={CreditCard} title="No payment assessments yet" description="Your assessments and receipts will appear here when an authorized payment provider is connected."/></section><h2 className="spaced-heading">Payment channels</h2><div className="integration-grid">{['Land Bank of the Philippines','Maya'].map(name=><div className="integration-card" key={name}><CreditCard size={22}/><h3>{name}</h3><span className="status">Not connected</span><p>Live collections require the provider’s authorized integration.</p></div>)}</div></>}
 {view==='Notifications'&&<section className="panel"><div className="section-heading"><h2>Recent activity</h2><button className="text-button" onClick={async()=>{try{await api('read');await refresh();toast.success('Notifications marked as read')}catch(e){toast.error((e as Error).message)}}} disabled={!activity.some(a=>!a.seen)}>Mark all as read <Check size={16}/></button></div>{activity.length?<div className="activity-list">{activity.map(a=><div className={'activity-item '+(!a.seen?'unread':'')} key={a.id}><span className="soft-icon"><Bell/></span><div><strong>{a.action}</strong><p>{a.note||'Your workspace has been updated.'}</p><small>{date(a.created)}{a.application?' · '+shortId(a.application):''}</small></div></div>)}</div>:<Empty icon={Bell} title="You’re all caught up" description="Your application updates will appear here."/>}</section>}
 {view==='My profile'&&<div className="profile-layout"><section className="panel profile-form"><h2>Personal details</h2><p className="form-hint">Saved information helps you complete future applications.</p><form onSubmit={async e=>{e.preventDefault();setBusy(true);try{await api('profile',{data:profile});await refresh();toast.success('Profile updated')}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}}><div className="fields-grid">{services[0].sections.find(s=>s.title==='Personal information')!.fields.filter(f=>f.key!=='email').map(f=><FieldInput key={f.key} field={{...f,required:false}} value={profile[f.key]||''} onChange={v=>setProfile({...profile,[f.key]:v})}/>)}</div><h2 className="spaced-heading">Philippine residential address</h2><ResidentialAddress data={profile} onChange={setProfile} required={false}/><button className="primary" disabled={busy||!user}>Save profile</button></form></section><aside><section className="panel account-card"><LockKeyhole/><h2>Account & security</h2><p>{user?.email||'You are not signed in.'}</p>{user?<a href="/signout?return_to=/" target="_top" className="text-button"><LogOut size={16}/> Sign out</a>:<a href="/signin?return_to=/" target="_top" className="text-button">Sign in to workspace</a>}<hr/><p>Preview access uses workspace sign-in. Public registration, email verification, MFA, eGovPH, and PhilSys require government identity integration.</p></section></aside></div>}
-{view==='Back office'&&(user?.role==='reviewer'?<section className="panel"><div className="section-heading"><h2>Processing queue</h2><button className="text-button" onClick={()=>download(JSON.stringify(reviewApps,null,2),'BI-application-report.json','application/json')}><Download size={16}/> Export report</button></div>{reviewApps.length?<ApplicationList applications={reviewApps} onOpen={a=>setDetail(a)}/>:<Empty title="No applications in the queue"/>}</section>:<section className="panel"><Empty icon={LockKeyhole} title="Officer access required" description="This workspace is reserved for authorized reviewers. BIIS sign-in and staff roles must be configured before processing live applications."/><div className="integration-status"><span className="status">BIIS not connected</span><p>Applicant accounts cannot access other applicants’ records or make processing decisions.</p></div></section>)}
+{view==='Back office'&&(user?.role==='reviewer'?<>
+<div className="filter-toolbar flex flex-wrap items-center justify-between gap-3">
+  <div className="flex flex-1 items-center gap-3 min-w-[280px]">
+    <label className="search-box flex-1">
+      <Search size={18}/>
+      <input
+        placeholder="Search by passport number, applicant name, or reference…"
+        aria-label="Search applications in queue"
+        value={backOfficeQuery}
+        onChange={e=>setBackOfficeQuery(e.target.value)}
+      />
+      {backOfficeQuery&&<button type="button" className="icon-button" onClick={()=>setBackOfficeQuery('')} aria-label="Clear search"><X size={15}/></button>}
+    </label>
+    <Choice
+      value={backOfficeStatus}
+      onChange={setBackOfficeStatus}
+      options={['All','Submitted','Under review','For correction','Approved','Disapproved','Endorsed']}
+      label="Filter application status"
+    />
+  </div>
+  <div className="flex items-center gap-2">
+    <button
+      type="button"
+      onClick={()=>setScannerOpen(true)}
+      className="primary flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-sm cursor-pointer"
+    >
+      <ScanLine size={16}/>
+      <span>Scan Passport</span>
+    </button>
+    <button
+      type="button"
+      className="icon-button"
+      aria-label="Refresh processing queue"
+      onClick={()=>refreshBackOffice()}
+    >
+      <RefreshCw size={17}/>
+    </button>
+    <button
+      type="button"
+      className="text-button flex items-center gap-1.5 cursor-pointer"
+      onClick={()=>exportToExcel(filteredReviewApps)}
+    >
+      <FileSpreadsheet size={16}/> Export Excel
+    </button>
+  </div>
+</div>
+<section className="panel">
+  <div className="section-heading mb-3 flex items-center justify-between">
+    <div>
+      <h2>Processing queue</h2>
+      <small className="text-slate-500">
+        {filteredReviewApps.length} of {reviewApps.length} applications
+        {backOfficeQuery?` matching "${backOfficeQuery}"`:''}
+      </small>
+    </div>
+  </div>
+  {filteredReviewApps.length?<ApplicationList applications={filteredReviewApps} onOpen={a=>setDetail(a)}/>:<Empty
+    title={reviewApps.length?"No matching applications":"No applications in the queue"}
+    description={reviewApps.length?"Try searching for a different passport number, applicant name, or clear the search filter.":"Submitted applications will appear here for officer evaluation."}
+    action={backOfficeQuery||backOfficeStatus!=='All'?()=>{setBackOfficeQuery('');setBackOfficeStatus('All');}:undefined}
+    actionLabel="Clear filters"
+  />}
+</section>
+</>:<section className="panel"><Empty icon={LockKeyhole} title="Officer access required" description="This workspace is reserved for authorized reviewers. BIIS sign-in and staff roles must be configured before processing live applications."/><div className="integration-status"><span className="status">BIIS not connected</span><p>Applicant accounts cannot access other applicants’ records or make processing decisions.</p></div></section>)}
 {view==='Help center'&&<><div className="help-layout"><section className="panel faq-list"><h2>How can we help?</h2>{[['How do I start an application?','Open All services, select a service, and complete each step. Your profile information can be reused in new applications.'],['Can I finish my application later?','Yes. Select Save draft at any step. You can continue from My applications after signing in to the same workspace account.'],['How do I upload a document?','Open your application and choose the Documents step. Upload a PDF, JPG, or PNG file up to 10 MB. Cruise passenger manifests accept XLSX files up to 101 MB, with multiple uploads.'],['How do I track an application?','Open My applications to see the current status and processing history. Status updates refresh every 30 seconds while the workspace is open.'],['Can I make an official payment here?','No. Land Bank and Maya are not connected in this preview. No payment is collected and no official receipt is issued.'],['Is this connected to Bureau of Immigration systems?','This is a private application preview. eGovPH, PhilSys, BIIS, eTravel verification, SMS, and payment providers require separate authorized integration.'],['What information should I enter in this preview?','Use sample application details and sample documents. Official submissions require the Bureau’s production system.']].map(([q,a])=><details key={q}><summary>{q}</summary><p>{a}</p></details>)}</section><aside className="journey-card"><CircleHelp/><h2>One step<br/>at a time.</h2><p>You can save a draft at any stage and return when you have everything you need.</p><button onClick={()=>navigate('All services')}>Explore services <ArrowRight size={17}/></button></aside></div><h2 className="spaced-heading">Connected services</h2><div className="integration-grid">{['eGovPH SSO','PhilSys','BIIS Portal','Visitor appointments (VAMS)','Email & SMS notifications'].map(s=><div className="integration-card" key={s}><h3>{s}</h3><span className="status">{s.includes('VAMS')?'Future integration':'Not connected'}</span></div>)}</div></>}
 <footer>© 2026 Bureau of Immigration <span>eServices application preview</span></footer></div></main>
-<Dialog open={!!detail} onOpenChange={v=>{if(!v){setDetail(null);setReviewNote('')}}}><DialogContent className="detail-dialog"><DialogHeader><DialogTitle>{detail&&serviceName(detail.service)}</DialogTitle><DialogDescription>{detail?.id}</DialogDescription></DialogHeader>{detail&&<><span className={'status status-'+detail.status.toLowerCase().replaceAll(' ','-')}>{detail.status}</span><div className="info-box"><ShieldCheck size={20}/><p>Preview record only. This is not an official immigration confirmation.</p></div>{qr&&<div className="qr-card"><img src={qr} width={180} height={180} alt="Preview travel reference QR code"/><div><h3>Travel reference</h3><p>This QR identifies a preview record. It is not valid for immigration clearance.</p><a className="text-button" href={qr} download={'preview-'+detail.id+'.png'}><Download size={16}/> Download preview QR</a></div></div>}<div className="review-section"><h3>Application details</h3><dl>{Object.entries(detail.data).map(([key,value])=><div key={key}><dt>{services.find(s=>s.id===detail.service)?.sections.flatMap(s=>s.fields).find(f=>f.key===key)?.label||key}</dt><dd>{value||'—'}</dd></div>)}</dl></div><h3>Submitted documents</h3><div className="detail-documents">{detailDocs.map(d=><a className="uploaded-file" key={d.id} href={'/api/documents?id='+d.id}><FileText size={16}/>{d.name}<Download size={15}/></a>)}</div><h3>Processing history</h3><div className="timeline">{[...detailActivity].reverse().map(a=><div key={a.id}><strong>{a.action}</strong><p>{a.note}</p><small>{date(a.created)}</small></div>)}</div><button className="secondary" onClick={()=>download('BUREAU OF IMMIGRATION — PREVIEW CONFIRMATION\nNot valid for immigration clearance or payment.\n\nReference: '+detail.id+'\nService: '+serviceName(detail.service)+'\nStatus: '+detail.status+'\nSaved: '+detail.created+'\n','preview-confirmation-'+shortId(detail.id)+'.txt')}><Download size={16}/> Download confirmation</button>{user?.role==='reviewer'&&<div className="reviewer-actions"><label htmlFor="review-note">Processing note</label><textarea id="review-note" value={reviewNote} onChange={e=>setReviewNote(e.target.value)} placeholder="Explain the processing decision"/><div>{['Under review','For correction','Approved','Disapproved','Endorsed'].map(status=><button className="secondary" key={status} disabled={busy||!reviewNote.trim()} onClick={async()=>{setBusy(true);try{await api('review',{id:detail.id,status,note:reviewNote});setDetail(null);await refresh();navigate('Back office');toast.success('Processing action recorded')}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}}>{status}</button>)}</div></div>}</>}</DialogContent></Dialog></SidebarProvider>
+<Dialog open={!!detail} onOpenChange={v=>{if(!v){setDetail(null);setReviewNote('')}}}><DialogContent className="detail-dialog"><DialogHeader><DialogTitle>{detail&&serviceName(detail.service)}</DialogTitle><DialogDescription>{detail?.id}</DialogDescription></DialogHeader>{detail&&<><span className={'status status-'+detail.status.toLowerCase().replaceAll(' ','-')}>{detail.status}</span><div className="info-box"><ShieldCheck size={20}/><p>Preview record only. This is not an official immigration confirmation.</p></div>{qr&&<div className="qr-card"><img src={qr} width={180} height={180} alt="Preview travel reference QR code"/><div><h3>Travel reference</h3><p>This QR identifies a preview record. It is not valid for immigration clearance.</p><a className="text-button" href={qr} download={'preview-'+detail.id+'.png'}><Download size={16}/> Download preview QR</a></div></div>}<div className="review-section"><h3>Application details</h3><dl>{Object.entries(detail.data).map(([key,value])=><div key={key}><dt>{services.find(s=>s.id===detail.service)?.sections.flatMap(s=>s.fields).find(f=>f.key===key)?.label||key}</dt><dd>{value||'—'}</dd></div>)}</dl></div><h3>Submitted documents</h3><div className="detail-documents">{detailDocs.map(d=><a className="uploaded-file" key={d.id} href={'/api/documents?id='+d.id}><FileText size={16}/>{d.name}<Download size={15}/></a>)}</div><h3>Processing history</h3><div className="timeline">{[...detailActivity].reverse().map(a=><div key={a.id}><strong>{a.action}</strong><p>{a.note}</p><small>{date(a.created)}</small></div>)}</div><button className="secondary" onClick={()=>download('BUREAU OF IMMIGRATION — PREVIEW CONFIRMATION\nNot valid for immigration clearance or payment.\n\nReference: '+detail.id+'\nService: '+serviceName(detail.service)+'\nStatus: '+detail.status+'\nSaved: '+detail.created+'\n','preview-confirmation-'+shortId(detail.id)+'.txt')}><Download size={16}/> Download confirmation</button>{user?.role==='reviewer'&&<div className="reviewer-actions"><label htmlFor="review-note">Processing note</label><textarea id="review-note" value={reviewNote} onChange={e=>setReviewNote(e.target.value)} placeholder="Explain the processing decision"/><div>{['Under review','For correction','Approved','Disapproved','Endorsed'].map(status=><button className="secondary" key={status} disabled={busy||!reviewNote.trim()} onClick={async()=>{setBusy(true);try{await api('review',{id:detail.id,status,note:reviewNote});setDetail(null);await refresh();navigate('Back office');toast.success('Processing action recorded')}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}}>{status}</button>)}</div></div>}</>}</DialogContent></Dialog>
+<PassportScannerModal open={scannerOpen} onOpenChange={setScannerOpen} applications={reviewApps} onSelectApplication={a=>setDetail(a)} onSearchQuery={q=>setBackOfficeQuery(q)}/>
+</SidebarProvider>
 }
-function Choice({value,onChange,options,label}:{value:string;onChange:(v:string)=>void;options:string[];label:string}){const [query,setQuery]=useState('');const filtered=options.length>10&&query.trim()?options.filter(o=>o.toLowerCase().includes(query.toLowerCase())):options;return <Select value={value} onValueChange={v=>{onChange(v);setQuery('');}}><SelectTrigger aria-label={label}><SelectValue placeholder={label?`Select ${label.toLowerCase()}…`:'Select an option'}/></SelectTrigger><SelectContent position="popper" className="max-h-72 min-w-[220px] overflow-y-auto">{options.length>10&&<div className="p-1.5 sticky top-0 bg-white border-b border-border z-10"><input type="text" placeholder={`Search ${label.toLowerCase()}…`} value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.stopPropagation()} className="w-full text-xs px-2.5 py-1.5 border rounded border-input outline-none focus:border-primary"/></div>}{filtered.length?filtered.map(o=><SelectItem key={o} value={o}>{o}</SelectItem>):<div className="p-3 text-xs text-muted-foreground text-center">No matching options</div>}</SelectContent></Select>}
-function FieldInput({field:f,value,onChange}:{field:Field;value:string;onChange:(v:string)=>void}){return <div className={'field '+(f.type==='textarea'?'full-width':'')}><label htmlFor={f.key}>{f.label}{f.required&&<span> *</span>}</label>{f.type==='select'?<Choice value={value} onChange={onChange} options={f.options||[]} label={f.label}/>:f.type==='textarea'?<textarea id={f.key} required={f.required} value={value} onChange={e=>onChange(e.target.value)} maxLength={5000}/>:<input id={f.key} type={f.type||'text'} required={f.required} value={value} onChange={e=>onChange(e.target.value)} maxLength={500} max={f.key==='birthDate'?new Date().toISOString().slice(0,10):undefined} autoComplete={f.key==='firstName'?'given-name':f.key==='lastName'?'family-name':f.key==='email'?'email':'off'}/>}</div>}
+function Choice({value,onChange,options,label,id}:{value:string;onChange:(v:string)=>void;options:string[];label:string;id?:string}){const selected=options.includes(value)?value:(value||null);return <div className="choice-picker"><Combobox items={options} value={selected} onValueChange={(v:string|null)=>onChange(v||'')} itemToStringLabel={(item:string)=>item||''} isItemEqualToValue={(item:string,sel:string)=>item===sel}><ComboboxInput id={id} aria-label={label} placeholder={label?`Select or search ${label.toLowerCase()}…`:'Select an option'} showClear={!!value} autoComplete="off"/><ComboboxContent className="choice-options"><ComboboxEmpty>No matching options</ComboboxEmpty><ComboboxList>{(item:string)=><ComboboxItem key={item} value={item}>{item}</ComboboxItem>}</ComboboxList></ComboboxContent></Combobox></div>}
+function FieldInput({field:f,value,onChange}:{field:Field;value:string;onChange:(v:string)=>void}){return <div className={'field '+(f.type==='textarea'?'full-width':'')}><label htmlFor={f.key}>{f.label}{f.required&&<span> *</span>}</label>{f.type==='select'?<Choice id={f.key} value={value} onChange={onChange} options={f.options||[]} label={f.label}/>:f.type==='textarea'?<textarea id={f.key} required={f.required} value={value} onChange={e=>onChange(e.target.value)} maxLength={5000}/>:<input id={f.key} type={f.type||'text'} required={f.required} value={value} onChange={e=>onChange(e.target.value)} maxLength={500} max={f.key==='birthDate'?new Date().toISOString().slice(0,10):undefined} autoComplete={f.key==='firstName'?'given-name':f.key==='lastName'?'family-name':f.key==='email'?'email':'off'}/>}</div>}
 function Empty({title,description,action,actionLabel,icon:Icon=Files}:{title:string;description?:string;action?:()=>void;actionLabel?:string;icon?:any}){return <div className="empty-app"><span className="soft-icon"><Icon/></span><h3>{title}</h3>{description&&<p>{description}</p>}{action&&<button className="secondary" onClick={action}>{actionLabel}<ArrowRight size={16}/></button>}</div>}
 function FormActions({step,busy,back,save,next}:{step:number;busy:boolean;back:()=>void;save:()=>void;next?:()=>void}){return <div className="form-actions"><button type="button" className="secondary" onClick={back} disabled={step===0||busy}><ArrowLeft size={16}/>Back</button><button type="button" className="secondary" disabled={busy} onClick={save}><Save size={16}/>{busy?'Saving…':'Save draft'}</button><button type={next?'button':'submit'} className="primary" disabled={busy} onClick={next}>Continue <ArrowRight size={16}/></button></div>}

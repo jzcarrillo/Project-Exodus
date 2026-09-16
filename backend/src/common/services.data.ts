@@ -530,9 +530,9 @@ const travel: Section = {
   fields: [
     f('travelDate', 'Travel date', 'date'),
     f('flightNumber', 'Flight / vessel number'),
-    f('port', 'Port of arrival / departure', 'select', true, PORTS_OF_ENTRY),
     f('origin', 'Country of origin', 'select', true, COUNTRIES),
     f('destination', 'Country of destination', 'select', true, COUNTRIES),
+    f('port', 'Port of arrival / departure', 'select', true, PORTS_OF_ENTRY),
   ],
 };
 
@@ -583,7 +583,7 @@ export const SERVICES: ServiceDefinition[] = [
     category: 'Stay',
     icon: 'globe',
     description: 'Apply for a visa waiver with a guided application.',
-    sections: [application, personal, passport, travel, address],
+    sections: [personal, passport, travel, address, application],
     documents: docs,
   },
   {
@@ -592,7 +592,7 @@ export const SERVICES: ServiceDefinition[] = [
     category: 'Study',
     icon: 'graduation',
     description: 'Submit your student visa conversion and enrollment details.',
-    sections: [application, personal, passport, travel, address, school],
+    sections: [personal, passport, travel, address, school, application],
     documents: [...docs, 'Facial image', 'Enrollment certificate'],
   },
   {
@@ -601,7 +601,7 @@ export const SERVICES: ServiceDefinition[] = [
     category: 'Study',
     icon: 'book',
     description: 'Apply for a permit for your studies in the Philippines.',
-    sections: [application, personal, passport, travel, address, school],
+    sections: [personal, passport, travel, address, school, application],
     documents: [...docs, 'Facial image', 'Enrollment certificate'],
   },
   {
@@ -611,7 +611,6 @@ export const SERVICES: ServiceDefinition[] = [
     icon: 'ship',
     description: 'Manage a cruise application and upload passenger manifests.',
     sections: [
-      application,
       personal,
       passport,
       travel,
@@ -626,6 +625,7 @@ export const SERVICES: ServiceDefinition[] = [
           f('representative', 'Authorized representative'),
         ],
       },
+      application,
     ],
     documents: [...docs, 'Passenger manifest (.xlsx)'],
   },
@@ -636,7 +636,6 @@ export const SERVICES: ServiceDefinition[] = [
     icon: 'building',
     description: 'Submit your organization’s accreditation application.',
     sections: [
-      application,
       personal,
       travel,
       address,
@@ -648,6 +647,7 @@ export const SERVICES: ServiceDefinition[] = [
           f('companyAddress', 'Company address'),
         ],
       },
+      application,
     ],
     documents: ['Facial image', 'Company registration', 'Supporting documents'],
   },
@@ -658,7 +658,6 @@ export const SERVICES: ServiceDefinition[] = [
     icon: 'calendar',
     description: 'Complete your annual report with your ACR I-Card information.',
     sections: [
-      application,
       personal,
       passport,
       address,
@@ -670,6 +669,7 @@ export const SERVICES: ServiceDefinition[] = [
           f('reportYear', 'Reporting year', 'select', true, REPORTING_YEARS),
         ],
       },
+      application,
     ],
     documents: [...docs, 'Facial image', 'ACR I-Card'],
   },
@@ -709,7 +709,6 @@ export const SERVICES: ServiceDefinition[] = [
     icon: 'flag',
     description: 'Apply with your personal, passport, and dependent information.',
     sections: [
-      application,
       personal,
       passport,
       address,
@@ -717,6 +716,7 @@ export const SERVICES: ServiceDefinition[] = [
         title: 'Dependent information',
         fields: [f('dependents', 'Dependents — names, birth dates, and relationship (or None)', 'textarea')],
       },
+      application,
     ],
     documents: [...docs, 'Facial image', 'Citizenship documents'],
   },
@@ -727,7 +727,6 @@ export const SERVICES: ServiceDefinition[] = [
     icon: 'users',
     description: 'Provide travel, companion, and parent or guardian information.',
     sections: [
-      application,
       personal,
       passport,
       travel,
@@ -737,11 +736,12 @@ export const SERVICES: ServiceDefinition[] = [
           f('companionName', 'Companion’s full name'),
           f('companionRelationship', 'Relationship to traveler', 'select', true, COMPANION_RELATIONSHIPS),
           f('guardianName', 'Parent / legal guardian’s full name'),
+          f('guardianNationality', 'Parent / guardian’s nationality', 'select', true, NATIONALITIES),
           f('guardianPassport', 'Parent / guardian’s passport number'),
           f('guardianPassportExpiry', 'Parent / guardian’s passport expiry', 'date'),
-          f('guardianNationality', 'Parent / guardian’s nationality', 'select', true, NATIONALITIES),
         ],
       },
+      application,
     ],
     documents: [...docs, 'Facial image', 'Parent / guardian passport', 'Proof of relationship'],
   },

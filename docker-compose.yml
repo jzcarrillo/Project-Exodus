@@ -71,6 +71,9 @@ services:
       - PORT=5173
       - HOST=0.0.0.0
       - BACKEND_URL=http://backend:4000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
 
 volumes:
   dynamodb-data:

@@ -2,6 +2,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {Combobox,ComboboxInput,ComboboxContent,ComboboxList,ComboboxItem,ComboboxEmpty} from '@/components/ui/combobox';
 import locations from '@/lib/ph-addresses.json';
+import postalCodes from '@/lib/ph-postal-codes.json';
 type Option={code:string;name:string};
 type Address=Record<string,string>;
 
@@ -38,8 +39,18 @@ export default function ResidentialAddress({data,onChange,required=true}:{data:A
           <input id="street" autoComplete="address-line1" required={required} value={data.street||''} onChange={e=>onChange({...data,street:e.target.value})} placeholder="House no., street, subdivision"/>
         </div>
         <AddressPicker id="province" label={'Province / Metro Manila'+suffix} placeholder="Search province or Metro Manila" items={locations.provinces} value={province} onChange={p=>onChange({...data,province:p?.name||'',provinceCode:p?.code||'',city:'',cityCode:'',barangay:'',barangayCode:'',postalCode:''})}/>
-        <AddressPicker id="city" label={'City / municipality'+suffix} placeholder={province?'Search city or municipality':'Select a province first'} disabled={!province} items={cities} value={city} onChange={c=>onChange({...data,city:c?.name||'',cityCode:c?.code||'',barangay:'',barangayCode:'',postalCode:''})}/>
-        <AddressPicker id="barangay" label={'Barangay'+suffix} placeholder={!city?'Select a city / municipality first':isLoading?'Loading barangays…':'Search barangay'} disabled={!city||isLoading||!!error} items={barangays} value={barangay} onChange={b=>onChange({...data,barangay:b?.name||'',barangayCode:b?.code||''})}/>
+        <AddressPicker id="city" label={'City / municipality'+suffix} placeholder={province?'Search city or municipality':'Select a province first'} disabled={!province} items={cities} value={city} onChange={c=>{
+          const cityCode = c?.code || '';
+          const cityName = c?.name || '';
+          const autoPostal = cityCode ? ((postalCodes.cities as Record<string, string>)[cityCode] || '') : '';
+          onChange({...data,city:cityName,cityCode,barangay:'',barangayCode:'',postalCode:autoPostal});
+        }}/>
+        <AddressPicker id="barangay" label={'Barangay'+suffix} placeholder={!city?'Select a city / municipality first':isLoading?'Loading barangays…':'Search barangay'} disabled={!city||isLoading||!!error} items={barangays} value={barangay} onChange={b=>{
+          const barangayCode = b?.code || '';
+          const barangayName = b?.name || '';
+          const specificPostal = barangayCode ? ((postalCodes.barangays as Record<string, string>)[barangayCode] || '') : '';
+          onChange({...data,barangay:barangayName,barangayCode,postalCode:specificPostal || data.postalCode || (data.cityCode ? ((postalCodes.cities as Record<string, string>)[data.cityCode] || '') : '')});
+        }}/>
         <div className="field">
           <label htmlFor="postalCode">Postal code{suffix}</label>
           <input id="postalCode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} autoComplete="postal-code" required={required} placeholder="4-digit postal code" value={data.postalCode||''} onChange={e=>onChange({...data,postalCode:e.target.value.replace(/\D/g,'')})}/>

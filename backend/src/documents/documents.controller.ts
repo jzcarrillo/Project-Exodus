@@ -75,35 +75,44 @@ export class DocumentsController {
   @UseInterceptors(FileInterceptor('file'))
   async upload(
     @CurrentUser() user: UserIdentity,
-    @Query('application') application: string,
-    @Query('kind') kind: string,
+    @Query('application') queryApp: string,
+    @Query('kind') queryKind: string,
     @Query('name') queryName: string,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request,
   ) {
-    if (file) {
-      const filename = queryName || file.originalname || 'document';
-      return this.documentsService.uploadDocument(
-        user,
-        application,
-        kind,
-        filename,
-        file.buffer,
-        file.mimetype,
-      );
-    }
+    let application = queryApp || (req.body && req.body.application);
+    let kind = queryKind || (req.body && req.body.kind);
+    let filename = queryName;
+    let buffer: Buffer;
+    let contentType = req.headers['content-type'];
 
-    // Direct raw body buffer
-    const rawBuffer = req.body instanceof Buffer ? req.body : Buffer.from(req.body || '');
-    const filename = (queryName || 'document').slice(0, 200);
-    const contentType = req.headers['content-type'];
+    if (file) {
+      filename = queryName || file.originalname || 'document';
+      buffer = file.buffer;
+      contentType = file.mimetype || contentType;
+    } else if (req.body instanceof Buffer) {
+      buffer = req.body;
+      filename = (queryName || 'document').slice(0, 200);
+    } else if (typeof req.body === 'string') {
+      buffer = Buffer.from(req.body);
+      filename = (queryName || 'document').slice(0, 200);
+    } else {
+      buffer = await new Promise<Buffer>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        req.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        req.on('end', () => resolve(Buffer.concat(chunks)));
+        req.on('error', reject);
+      });
+      filename = (queryName || 'document').slice(0, 200);
+    }
 
     return this.documentsService.uploadDocument(
       user,
       application,
       kind,
       filename,
-      rawBuffer,
+      buffer,
       contentType,
     );
   }

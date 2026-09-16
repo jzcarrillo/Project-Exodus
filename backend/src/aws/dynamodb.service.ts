@@ -190,6 +190,26 @@ export class DynamoDBService implements OnModuleInit {
     return (res.Items || []).sort((a: any, b: any) => (b.updated || '').localeCompare(a.updated || ''));
   }
 
+  async queryReviewerQueueByPassport(passport: string, limit = 100): Promise<any[]> {
+    const clean = passport.trim().toUpperCase();
+    const res = await this.docClient.send(
+      new ScanCommand({
+        TableName: this.getTableName('Applications'),
+        FilterExpression: '#s <> :draft',
+        ExpressionAttributeNames: { '#s': 'status' },
+        ExpressionAttributeValues: { ':draft': 'Draft' },
+        Limit: limit * 2,
+      }),
+    );
+    const items = (res.Items || []).filter((app: any) => {
+      const pass = (app.data?.passportNumber || app.data?.guardianPassport || '').toUpperCase();
+      const id = (app.id || '').toUpperCase();
+      const name = `${app.data?.firstName || ''} ${app.data?.lastName || ''}`.toUpperCase();
+      return pass.includes(clean) || id.includes(clean) || name.includes(clean);
+    });
+    return items.sort((a: any, b: any) => (b.updated || '').localeCompare(a.updated || ''));
+  }
+
   // --- Profiles Table Helpers ---
   async getProfile(owner: string): Promise<any> {
     const res = await this.docClient.send(
