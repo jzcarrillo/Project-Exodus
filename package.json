@@ -6,6 +6,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+<<<<<<< HEAD
     "dev": "node scripts/dev-all.mjs",
     "dev:frontend": "npm --prefix frontend run dev",
     "dev:backend": "npm --prefix backend run start:dev",
@@ -20,6 +21,12 @@
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
+=======
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
+>>>>>>> 5d0088fcc4268e98951581350a77cb22193aefc2
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1132.0",
