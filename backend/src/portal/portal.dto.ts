@@ -2,10 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString, IsNumber } from 'class-validator';
 
 export class PortalActionDto {
-  @ApiProperty({ description: 'Action type: save, submit, profile, read, review' })
+  @ApiProperty({ description: 'Action type: save, submit, profile, read, review, pay' })
   @IsNotEmpty()
   @IsString()
-  action: 'save' | 'submit' | 'profile' | 'read' | 'review';
+  action: 'save' | 'submit' | 'profile' | 'read' | 'review' | 'pay';
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -35,6 +35,23 @@ export class PortalActionDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  channel?: string;
+}
+
+export class PayApplicationDto {
+  @ApiProperty()
+  @IsNotEmpty()
+  @IsString()
+  id: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  channel?: string;
 }
 
 export class SaveDraftDto {

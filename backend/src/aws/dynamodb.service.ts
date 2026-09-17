@@ -161,6 +161,28 @@ export class DynamoDBService implements OnModuleInit {
     );
   }
 
+  async updateApplicationStatusAndData(id: string, status: string, data: any, updated: string): Promise<void> {
+    await this.docClient.send(
+      new UpdateCommand({
+        TableName: this.getTableName('Applications'),
+        Key: { id },
+        UpdateExpression: 'SET #s = :status, #d = :data, #u = :updated, #v = #v + :inc',
+        ExpressionAttributeNames: {
+          '#s': 'status',
+          '#d': 'data',
+          '#u': 'updated',
+          '#v': 'version',
+        },
+        ExpressionAttributeValues: {
+          ':status': status,
+          ':data': data,
+          ':updated': updated,
+          ':inc': 1,
+        },
+      }),
+    );
+  }
+
   async queryUserApplications(owner: string, limit = 200): Promise<any[]> {
     const res = await this.docClient.send(
       new QueryCommand({
