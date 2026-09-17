@@ -17,6 +17,7 @@ import {
   SubmitApplicationDto,
   UpdateProfileDto,
   ReviewActionDto,
+  PayApplicationDto,
 } from './portal.dto';
 
 @ApiTags('Portal & Applications')
@@ -41,7 +42,7 @@ export class PortalController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Unified Portal Dispatcher for actions (save, submit, profile, read, review)' })
+  @ApiOperation({ summary: 'Unified Portal Dispatcher for actions (save, submit, profile, read, review, pay)' })
   async handlePortalAction(@CurrentUser() user: UserIdentity, @Body() body: PortalActionDto) {
     switch (body.action) {
       case 'save':
@@ -55,6 +56,10 @@ export class PortalController {
       case 'submit':
         if (!body.id) throw new BadRequestException('Application ID is required.');
         return this.portalService.submitApplication(user, body.id);
+
+      case 'pay':
+        if (!body.id) throw new BadRequestException('Application ID is required.');
+        return this.portalService.payApplication(user, body.id, body.channel);
 
       case 'profile':
         return this.portalService.updateProfile(user, body.data || {});
@@ -87,6 +92,12 @@ export class PortalController {
   @ApiOperation({ summary: 'Submit application with field and document validations' })
   async submit(@CurrentUser() user: UserIdentity, @Body() body: SubmitApplicationDto) {
     return this.portalService.submitApplication(user, body.id);
+  }
+
+  @Post('pay')
+  @ApiOperation({ summary: 'Settle assessment fee and submit application for review' })
+  async pay(@CurrentUser() user: UserIdentity, @Body() body: PayApplicationDto) {
+    return this.portalService.payApplication(user, body.id, body.channel);
   }
 
   @Post('profile')

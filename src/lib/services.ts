@@ -492,9 +492,86 @@ export const validateApplication=(service:string,data:Record<string,string>)=>{
  if((f.key==='passportNumber'||f.key==='guardianPassport')&&value.length!==9)return [f.label+' must be exactly 9 characters'];
  if(f.options&&!f.options.includes(value))return [f.label+' (invalid option)'];
  if(f.type==='email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))return [f.label+' (invalid email)'];
- if(f.type==='date'&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||Number.isNaN(Date.parse(value))))return [f.label+' (invalid date)'];
- if(f.key==='birthDate'&&value>new Date().toISOString().slice(0,10))return ['Date of birth cannot be in the future'];
+ if(f.type==='date'){
+  const isIso=/^\d{4}-\d{2}-\d{2}$/.test(value);
+  const isMmDd=/^(\d{2})\/(\d{2})\/(\d{4})$/.test(value);
+  if(!isIso&&!isMmDd)return [f.label+' (must be in MM/DD/YYYY format)'];
+  let d: Date;
+  if(isMmDd){
+    const [m,day,y]=value.split('/').map(Number);
+    d=new Date(y,m-1,day);
+    if(d.getFullYear()!==y||d.getMonth()!==m-1||d.getDate()!==day)return [f.label+' (invalid date)'];
+  }else{
+    d=new Date(value+'T00:00:00');
+    if(Number.isNaN(d.getTime()))return [f.label+' (invalid date)'];
+  }
+  if(f.key==='birthDate'){
+    const today=new Date();
+    today.setHours(23,59,59,999);
+    if(d>today)return ['Date of birth cannot be in the future'];
+  }
+ }
  if(f.type==='number'&&!/^\d+$/.test(value))return [f.label+' (must be a number)'];
  return [];
  });
+};
+
+export const PAYMENT_REQUIRED_SERVICES = new Set([
+  'student-visa',
+  'study-permit',
+  'cruise-waiver',
+  'annual-report',
+  'dual-citizenship',
+  'weg',
+]);
+
+export interface ServiceFee {
+  amount: number;
+  breakdown: { item: string; amount: number }[];
+}
+
+export const SERVICE_FEES: Record<string, ServiceFee> = {
+  'student-visa': {
+    amount: 8520,
+    breakdown: [
+      { item: 'Student Visa Conversion Fee', amount: 4500 },
+      { item: 'ACR I-Card (1 Year)', amount: 2520 },
+      { item: 'Legal Research & Express Lane Fee', amount: 1500 },
+    ],
+  },
+  'study-permit': {
+    amount: 4740,
+    breakdown: [
+      { item: 'Special Study Permit (SSP) Fee', amount: 3740 },
+      { item: 'Legal Research & Processing Fee', amount: 1000 },
+    ],
+  },
+  'cruise-waiver': {
+    amount: 2500,
+    breakdown: [
+      { item: 'Cruise Ship Passenger Visa Waiver', amount: 2000 },
+      { item: 'Legal Research Fee', amount: 500 },
+    ],
+  },
+  'annual-report': {
+    amount: 310,
+    breakdown: [
+      { item: 'Alien Annual Report Fee', amount: 300 },
+      { item: 'Legal Research Fee', amount: 10 },
+    ],
+  },
+  'dual-citizenship': {
+    amount: 2500,
+    breakdown: [
+      { item: 'RA 9225 Dual Citizenship Petition Fee', amount: 2000 },
+      { item: 'Legal Research & Order Fee', amount: 500 },
+    ],
+  },
+  'weg': {
+    amount: 3120,
+    breakdown: [
+      { item: 'Waiver of Exclusion Grounds (WEG) Order', amount: 2120 },
+      { item: 'Express Lane & Processing Fee', amount: 1000 },
+    ],
+  },
 };

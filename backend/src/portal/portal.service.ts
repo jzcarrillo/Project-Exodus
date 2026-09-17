@@ -8,7 +8,7 @@ import {
 import { DatabaseService } from '../database/database.service';
 import { DynamoDBService } from '../aws/dynamodb.service';
 import { UserIdentity } from '../common/types';
-import { SERVICES, validateApplicationFields } from '../common/services.data';
+import { SERVICES, validateApplicationFields, PAYMENT_REQUIRED_SERVICES, SERVICE_FEES } from '../common/services.data';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -244,9 +244,22 @@ export class PortalService {
         throw new BadRequestException('Upload required documents: ' + required.join(', '));
       }
 
-      await this.dynamoService.updateApplicationStatus(app.id, 'Submitted', now);
-      await this.logActivity(user.userId, app.id, 'Application submitted', 'Saved in preview workspace.');
-      return { ok: true };
+      const requiresPayment = PAYMENT_REQUIRED_SERVICES.has(app.service);
+      const targetStatus = requiresPayment ? 'For payment' : 'Submitted';
+
+      await this.dynamoService.updateApplicationStatus(app.id, targetStatus, now);
+      if (requiresPayment) {
+        const fee = SERVICE_FEES[app.service]?.amount || 0;
+        await this.logActivity(
+          user.userId,
+          app.id,
+          'Assessment issued',
+          `Government fee assessment of ₱${fee.toLocaleString()} issued. Awaiting payment.`,
+        );
+      } else {
+        await this.logActivity(user.userId, app.id, 'Application submitted', 'Saved in preview workspace.');
+      }
+      return { ok: true, status: targetStatus };
     }
 
     // SQLite
@@ -270,12 +283,87 @@ export class PortalService {
       throw new BadRequestException('Upload required documents: ' + required.join(', '));
     }
 
-    this.sqlite
-      .prepare("UPDATE applications SET status = 'Submitted', updated = ?, version = version + 1 WHERE id = ? AND owner = ? AND status IN ('Draft', 'For correction')")
-      .run(now, app.id, user.userId);
+    const requiresPayment = PAYMENT_REQUIRED_SERVICES.has(app.service);
+    const targetStatus = requiresPayment ? 'For payment' : 'Submitted';
 
-    await this.logActivity(user.userId, app.id, 'Application submitted', 'Saved in preview workspace.');
-    return { ok: true };
+    this.sqlite
+      .prepare("UPDATE applications SET status = ?, updated = ?, version = version + 1 WHERE id = ? AND owner = ? AND status IN ('Draft', 'For correction')")
+      .run(targetStatus, now, app.id, user.userId);
+
+    if (requiresPayment) {
+      const fee = SERVICE_FEES[app.service]?.amount || 0;
+      await this.logActivity(
+        user.userId,
+        app.id,
+        'Assessment issued',
+        `Government fee assessment of ₱${fee.toLocaleString()} issued. Awaiting payment.`,
+      );
+    } else {
+      await this.logActivity(user.userId, app.id, 'Application submitted', 'Saved in preview workspace.');
+    }
+    return { ok: true, status: targetStatus };
+  }
+
+  async payApplication(user: UserIdentity, id: string, channel?: string) {
+    const now = new Date().toISOString();
+    const paymentChannel = channel || 'Land Bank of the Philippines';
+    const receiptNo = 'OR-2026-' + Math.floor(100000 + Math.random() * 900000);
+
+    if (this.isDynamo) {
+      const app = await this.dynamoService.getApplication(id);
+      if (!app || (app.owner !== user.userId && user.role !== 'reviewer')) {
+        throw new NotFoundException('Application not found.');
+      }
+      if (app.status !== 'For payment') {
+        throw new ConflictException('Application is not awaiting payment.');
+      }
+
+      const fee = SERVICE_FEES[app.service]?.amount || 0;
+      const updatedData = {
+        ...(app.data || {}),
+        paidAt: now,
+        receiptNo,
+        paymentChannel,
+        feeAmount: String(fee),
+      };
+
+      await this.dynamoService.updateApplicationStatusAndData(app.id, 'Submitted', updatedData, now);
+      await this.logActivity(
+        app.owner,
+        app.id,
+        'Payment confirmed',
+        `Official Receipt ${receiptNo} issued via ${paymentChannel} (₱${fee.toLocaleString()}). Application submitted for review.`,
+      );
+      return { ok: true, status: 'Submitted', receiptNo, paymentChannel, paidAt: now };
+    }
+
+    // SQLite fallback
+    const app = this.sqlite.prepare('SELECT * FROM applications WHERE id = ?').get(id) as any;
+    if (!app || (app.owner !== user.userId && user.role !== 'reviewer')) {
+      throw new NotFoundException('Application not found.');
+    }
+    if (app.status !== 'For payment') {
+      throw new ConflictException('Application is not awaiting payment.');
+    }
+
+    const appData = JSON.parse(app.data || '{}');
+    const fee = SERVICE_FEES[app.service]?.amount || 0;
+    appData.paidAt = now;
+    appData.receiptNo = receiptNo;
+    appData.paymentChannel = paymentChannel;
+    appData.feeAmount = String(fee);
+
+    this.sqlite
+      .prepare('UPDATE applications SET status = ?, data = ?, updated = ?, version = version + 1 WHERE id = ?')
+      .run('Submitted', JSON.stringify(appData), now, app.id);
+
+    await this.logActivity(
+      app.owner,
+      app.id,
+      'Payment confirmed',
+      `Official Receipt ${receiptNo} issued via ${paymentChannel} (₱${fee.toLocaleString()}). Application submitted for review.`,
+    );
+    return { ok: true, status: 'Submitted', receiptNo, paymentChannel, paidAt: now };
   }
 
   async updateProfile(user: UserIdentity, data: Record<string, string>) {
