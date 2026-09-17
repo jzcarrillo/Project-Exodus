@@ -15,10 +15,7 @@
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "docker:aws": "docker compose -f docker-compose.aws.yml up --build",
-    "deploy:aws": "bash deploy/aws/deploy.sh",
-    "build:next": "next build",
-    "start": "next start",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
+    "deploy:aws": "bash deploy/aws/deploy.sh"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1132.0",

@@ -4,15 +4,15 @@ frontend:
     preBuild:
       commands:
         - node --version
-        - npm ci --legacy-peer-deps
+        - cd frontend && npm ci --legacy-peer-deps
     build:
       commands:
-        - npx next build
+        - cd frontend && npx next build
   artifacts:
-    baseDirectory: .next
+    baseDirectory: frontend/.next
     files:
       - '**/*'
   cache:
     paths:
-      - node_modules/**/*
-      - .next/cache/**/*
+      - frontend/node_modules/**/*
+      - frontend/.next/cache/**/*
