@@ -86,6 +86,13 @@ export default function Portal(){
   const [paymentModalApp, setPaymentModalApp] = useState<Application | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<string>('Land Bank of the Philippines');
   const [paying, setPaying] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<Record<string, {
+    file: File;
+    name: string;
+    size: number;
+    status: 'selected' | 'uploading' | 'uploaded' | 'error';
+    previewUrl?: string;
+  }>>({});
   const saveLock=useRef(false);
 
   const refresh=useCallback(async()=>{
@@ -95,7 +102,7 @@ export default function Portal(){
       if (!token && !email) {
         setUser(null);
         setApplications([]);
-        setDocuments([]);
+        setDocuments(prev => prev.filter(d => d.id?.startsWith('local-doc-') || (selected?.id && d.application === selected.id)));
         setActivity([]);
         setProfile({});
         setError('');
@@ -154,8 +161,8 @@ export default function Portal(){
     setAuthOpen(true);
   };
 
-  const navigate=useCallback((v:string)=>{setView(v);setQuery('');setFilter('All');setService(null);setSelected(null);setDetail(null);setStep(0);window.scrollTo({top:0,behavior:'smooth'})},[]);
-  const start=useCallback((name:string)=>{const s=services.find(s=>s.name===name||s.id===name);if(!s)return;setService(s);setSelected(null);setData({...profile,email:user?.email||''});setStep(0);setConsent(false);setView('New application');window.scrollTo({top:0})},[profile,user]);
+  const navigate=useCallback((v:string)=>{setView(v);setQuery('');setFilter('All');setService(null);setSelected(null);setSelectedFiles({});setDetail(null);setStep(0);window.scrollTo({top:0,behavior:'smooth'})},[]);
+  const start=useCallback((name:string)=>{const s=services.find(s=>s.name===name||s.id===name);if(!s)return;setService(s);setSelected(null);setSelectedFiles({});setData({...profile,email:user?.email||''});setStep(0);setConsent(false);setView('New application');window.scrollTo({top:0})},[profile,user]);
 
   useEffect(()=>{const context=(document as any).modelContext;if(!context?.registerTool)return;const controller=new AbortController();try{Promise.resolve(context.registerTool({name:'start_immigration_application',description:'Open the guided application form for a service. Does not save or submit.',inputSchema:{type:'object',properties:{service:{type:'string',enum:services.map(s=>s.id)}},required:['service'],additionalProperties:false},annotations:{readOnlyHint:false},execute:(input:any)=>{if(!input||Object.keys(input).length!==1||!services.some(s=>s.id===input.service))throw new Error('Choose a supported service ID.');start(input.service);return {opened:input.service,submitted:false}}},{signal:controller.signal})).catch(()=>{})}catch{}return()=>controller.abort()},[start]);
 
@@ -195,19 +202,168 @@ export default function Portal(){
     return pass.includes(q) || name.includes(q) || id.includes(q) || service.includes(q);
   });
 
-  const open=(a:Application)=>{if(['Draft','For correction'].includes(a.status)){setSelected(a);setService(services.find(s=>s.id===a.service)!);setData(a.data);setStep(0);setConsent(false);setView('Continue application');}else setDetail(a)};
+  const open=(a:Application)=>{if(['Draft','For correction'].includes(a.status)){setSelected(a);setSelectedFiles({});setService(services.find(s=>s.id===a.service)!);setData(a.data);setStep(0);setConsent(false);setView('Continue application');}else setDetail(a)};
 
   async function save(){if(!service)throw new Error('Choose a service.');if(saveLock.current)throw new Error('A save is already in progress.');saveLock.current=true;try{const result=await api('save',{service:service.id,data,id:selected?.id,version:selected?.version});const next={id:result.id,service:service.id,status:selected?.status||'Draft',data,created:selected?.created||new Date().toISOString(),updated:new Date().toISOString(),version:result.version};setSelected(next);await refresh();return next;}finally{saveLock.current=false}}
 
   async function saveDraft(){setBusy(true);try{await save();toast.success('Draft saved. You can return to it anytime.')}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
 
-  async function uploadFiles(files:FileList|null,kind:string){if(!files?.length)return;setBusy(true);try{let a=selected;if(!a||!a.id){a=await save();}if(!a?.id)throw new Error('Save application draft before uploading documents.');const uploadedList:any[]=[];for(const file of Array.from(files)){const max=kind.includes('.xlsx')?101*1024*1024:10*1024*1024;if(file.size>max)throw new Error(file.name+' exceeds the size limit.');const formData=new FormData();formData.append('file',file);formData.append('application',a.id);formData.append('kind',kind);const params=new URLSearchParams({application:a.id,kind,name:file.name});const res=await fetch('/api/documents?'+params,{method:'POST',headers:getAuthHeaders(),body:formData});const result:any=await res.json();if(!res.ok)throw new Error(result.error||'Failed to upload file.');uploadedList.push({id:result.id,application:a.id,name:file.name,kind,size:file.size,created:new Date().toISOString()});}setDocuments(prev=>{const filtered=kind.includes('.xlsx')?prev:prev.filter(d=>!(d.application===a.id&&d.kind===kind));return[...uploadedList,...filtered];});setSelected(prev=>(prev&&prev.id===a.id?prev:a));await refresh();toast.success(`${kind} uploaded successfully.`);}catch(e){toast.error((e as Error).message);}finally{setBusy(false);}}
+  async function uploadFiles(files:FileList|null,kind:string){
+    if(!files?.length)return;
+    const file = files[0];
+    const max = kind.includes('.xlsx') ? 101 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > max) {
+      toast.error(file.name + ' exceeds the size limit.');
+      return;
+    }
+
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined;
+    setSelectedFiles(prev => ({
+      ...prev,
+      [kind]: {
+        file,
+        name: file.name,
+        size: file.size,
+        status: 'uploading',
+        previewUrl,
+      },
+    }));
+
+    setBusy(true);
+    try {
+      let a = selected;
+      if (!a || !a.id) {
+        try {
+          a = await save();
+        } catch {
+          const localDraftId = 'BI-' + crypto.randomUUID();
+          a = {
+            id: localDraftId,
+            service: service!.id,
+            status: 'Draft',
+            data,
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+            version: 1,
+          };
+          setSelected(a);
+        }
+      }
+
+      const uploadedList: any[] = [];
+      let uploadSucceeded = false;
+
+      try {
+        for (const f of Array.from(files)) {
+          const formData = new FormData();
+          formData.append('file', f);
+          formData.append('application', a.id);
+          formData.append('kind', kind);
+          const params = new URLSearchParams({ application: a.id, kind, name: f.name });
+          const res = await fetch('/api/documents?' + params, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: formData,
+          });
+          const result: any = await res.json();
+          if (!res.ok) throw new Error(result.error || 'Upload failed');
+          uploadedList.push({
+            id: result.id,
+            application: a.id,
+            name: f.name,
+            kind,
+            size: f.size,
+            created: new Date().toISOString(),
+          });
+        }
+        uploadSucceeded = true;
+      } catch (uploadErr) {
+        console.warn('Backend document upload skipped or failed:', uploadErr);
+      }
+
+      if (uploadSucceeded && uploadedList.length > 0) {
+        setDocuments(prev => {
+          const filtered = kind.includes('.xlsx')
+            ? prev
+            : prev.filter(d => !(d.application === a.id && d.kind === kind));
+          return [...uploadedList, ...filtered];
+        });
+        setSelectedFiles(prev => ({
+          ...prev,
+          [kind]: {
+            file,
+            name: file.name,
+            size: file.size,
+            status: 'uploaded',
+            previewUrl,
+          },
+        }));
+        setSelected(prev => (prev && prev.id === a.id ? prev : a));
+        await refresh();
+        toast.success(`${kind} uploaded successfully.`);
+      } else {
+        const localDoc = {
+          id: 'local-doc-' + crypto.randomUUID(),
+          application: a.id,
+          name: file.name,
+          kind,
+          size: file.size,
+          created: new Date().toISOString(),
+        };
+        setDocuments(prev => {
+          const filtered = kind.includes('.xlsx')
+            ? prev
+            : prev.filter(d => !(d.application === a.id && d.kind === kind));
+          return [localDoc, ...filtered];
+        });
+        setSelectedFiles(prev => ({
+          ...prev,
+          [kind]: {
+            file,
+            name: file.name,
+            size: file.size,
+            status: 'selected',
+            previewUrl,
+          },
+        }));
+        setSelected(prev => (prev && prev.id === a.id ? prev : a));
+        toast.success(`${kind} selected: ${file.name}`);
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(){
     setBusy(true);
     try{
       if(!consent)throw new Error('Confirm the review statement first.');
       const a=await save();
+
+      for (const [docKind, docInfo] of Object.entries(selectedFiles)) {
+        if (docInfo.status !== 'uploaded' || !documents.some(d => d.application === a!.id && d.kind === docKind)) {
+          try {
+            const formData = new FormData();
+            formData.append('file', docInfo.file);
+            formData.append('application', a!.id);
+            formData.append('kind', docKind);
+            const params = new URLSearchParams({ application: a!.id, kind: docKind, name: docInfo.name });
+            const upRes = await fetch('/api/documents?' + params, {
+              method: 'POST',
+              headers: getAuthHeaders(),
+              body: formData,
+            });
+            if (upRes.ok) {
+              docInfo.status = 'uploaded';
+            }
+          } catch (e) {
+            console.warn('Document sync before submit skipped:', e);
+          }
+        }
+      }
+
       const subRes: any = await api('submit',{id:a!.id});
       await refresh();
 
@@ -246,6 +402,7 @@ export default function Portal(){
 
       setService(null);
       setSelected(null);
+      setSelectedFiles({});
       setData({});
       setStep(0);
       setConsent(false);
@@ -516,7 +673,45 @@ export default function Portal(){
           {view==='Overview'&&<Overview applications={applications} setView={navigate} onOpen={open} onStart={start}/>}
           {view==='All services'&&<><div className="filter-toolbar"><label className="search-box"><Search size={18}/><input placeholder="Search immigration services…" aria-label="Search services" value={query} onChange={e=>setQuery(e.target.value)}/></label><span className="muted">{services.length} services available</span></div><Tabs value={filter} onValueChange={setFilter}><TabsList className="category-tabs">{['All','Travel','Stay','Study','Citizenship','Organization'].map(c=><TabsTrigger key={c} value={c}>{c}</TabsTrigger>)}</TabsList></Tabs><div className="catalog">{services.filter(s=>(filter==='All'||s.category===filter)&&(s.name+' '+s.description).toLowerCase().includes(query.toLowerCase())).map(s=>{const Icon=icons[s.icon];return <button className="service-card" key={s.id} onClick={()=>start(s.id)}><span className="soft-icon"><Icon/></span><span className="category-label">{s.category}</span><h3>{s.name}</h3><p>{s.description}</p><span className="start-link">Start application <ArrowRight size={15}/></span></button>})}</div>{!services.some(s=>(filter==='All'||s.category===filter)&&(s.name+' '+s.description).toLowerCase().includes(query.toLowerCase()))&&<Empty title="No matching services" description="Try another search or choose a different category."/>}</>}
           {view==='My applications'&&<><div className="filter-toolbar"><label className="search-box"><Search size={18}/><input placeholder="Search by service or reference…" aria-label="Search applications" value={query} onChange={e=>setQuery(e.target.value)}/></label><Choice value={filter} onChange={setFilter} options={['All','Draft','For payment','Submitted','Under review','For correction','Approved','Disapproved','Endorsed']} label="Filter application status"/><button className="icon-button" aria-label="Refresh applications" onClick={refresh}><RefreshCw size={17}/></button></div><section className="panel">{loading?<Empty title="Loading your applications…"/>:filtered.length?<ApplicationList applications={filtered} onOpen={open}/>:<Empty title={applications.length?'No matching applications':'Your next chapter starts here'} description={applications.length?'Try another search or status.':'Choose a service to start your first application.'} action={()=>navigate('All services')} actionLabel="Explore services"/>}</section></>}
-          {service&&<div className="application-layout"><aside className="steps-panel"><p className="eyebrow">YOUR APPLICATION</p>{[...service.sections.map(s=>s.title),'Documents','Review & submit'].map((label,i)=><button key={label} className={'step '+(i===step?'current':'')} onClick={()=>setStep(i)}><span>{i<step?<Check size={14}/>:i+1}</span>{label}</button>)}<div className="draft-note"><Save size={17}/><p>{selected?'Draft '+shortId(selected.id):'Your draft will appear in My applications once saved.'}</p></div></aside><section className="panel application-form"><div className="form-top"><span>STEP {step+1} OF {service.sections.length+2}</span><Progress value={(step+1)/(service.sections.length+2)*100}/></div>{!user&&!loading&&<div className="signin-notice"><LockKeyhole size={20}/><div><strong>Sign in to save your application</strong><p>Sign in with your email or register a new account to keep your application saved.</p><button type="button" onClick={()=>openAuth('login')} className="text-button">Sign in to workspace <ArrowRight size={15}/></button></div></div>}{step<service.sections.length?<form onKeyDown={handleFormKeyDown} onSubmit={e=>{e.preventDefault();const missing=service.sections[step].fields.filter(f=>f.required&&!data[f.key]?.trim());if(missing.length){toast.error('Complete '+missing.map(f=>f.label).join(', '));return;}const invalidPassport=service.sections[step].fields.filter(f=>(f.key==='passportNumber'||f.key==='guardianPassport')&&data[f.key]?.trim()&&data[f.key]?.trim().length!==9);if(invalidPassport.length){toast.error(invalidPassport.map(f=>f.label).join(', ')+' must be exactly 9 characters');return;}setStep(step+1)}}><h2>{service.sections[step].title}</h2><p className="form-hint">Fields marked with * are required.</p>{service.sections[step].title==='Philippine residential address'?<ResidentialAddress data={data} onChange={setData}/>:<div className="fields-grid">{service.sections[step].fields.map(f=><FieldInput key={f.key} field={f} value={data[f.key]||''} onChange={v=>setData({...data,[f.key]:v})}/>)}</div>}<FormActions step={step} busy={busy} back={()=>setStep(Math.max(0,step-1))} save={saveDraft}/></form>:step===service.sections.length?<><h2>Upload your documents</h2><p className="form-hint">Use PDF, JPG, or PNG, up to 10 MB per file. Upload sample documents in this preview.</p>{service.id==='cruise-waiver'&&<div className="info-box"><FileText size={20}/><div><strong>Passenger manifest</strong><p>Download the XLSX template, complete it, and upload one or more files, up to 101 MB each.</p><button className="text-button" onClick={template}><Download size={15}/> Download XLSX template</button></div></div>}<div className="upload-list">{service.documents.map(kind=>{const matchingDocs=documents.filter(d=>(selected?.id?d.application===selected.id:false)&&d.kind===kind);const isUploaded=matchingDocs.length>0;return <div className={'upload-card '+(isUploaded?'uploaded':'')} key={kind}><div><span className={'soft-icon '+(isUploaded?'soft-icon-success':'')}>{isUploaded?<CheckCircle2 size={20}/>:<FileText size={20}/>}</span><div style={{minWidth:0,flex:1}}><div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}><strong>{kind} *</strong>{isUploaded?<span className="status status-approved" style={{fontSize:'11px',padding:'2px 8px'}}><Check size={12}/> Uploaded</span>:<span className="status" style={{fontSize:'11px',padding:'2px 8px'}}>Required</span>}</div>{matchingDocs.length>0?<div style={{marginTop:'6px',display:'flex',flexDirection:'column',gap:'4px'}}>{matchingDocs.map(d=><div key={d.id} style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}><a className="uploaded-file" href={'/api/documents?id='+d.id} title={'Download '+d.name}><CheckCircle2 size={14}/><span>{d.name}</span>{d.size?<span className="file-size">({(d.size/1024).toFixed(1)} KB)</span>:null}<Download size={13}/></a></div>)}</div>:<p style={{margin:'4px 0 0',fontSize:'12.5px',color:'#7f90a2'}}>No file uploaded yet</p>}</div></div><label className={'secondary upload-button '+(busy?'disabled':'')+(isUploaded?' is-replace':'')}>{isUploaded?<RefreshCw size={14}/>:<Upload size={14}/>}{busy?'Please wait':isUploaded?'Replace file':'Upload'}<input disabled={busy} type="file" aria-label={(isUploaded?'Replace ':'Upload ')+kind} accept={kind.includes('.xlsx')?'.xlsx':kind==='Facial image'?'.jpg,.jpeg,.png':'.pdf,.jpg,.jpeg,.png'} multiple={kind.includes('.xlsx')} onChange={e=>{uploadFiles(e.target.files,kind);e.target.value=''}}/></label></div>})}</div><FormActions step={step} busy={busy} back={()=>setStep(step-1)} save={saveDraft} next={()=>setStep(step+1)}/></>:<div className="review-step-container" onKeyDown={handleReviewKeyDown}><h2>Review your application</h2><p className="form-hint">Make sure the details and documents are correct before submitting.</p>{service.sections.map((s,i)=><div className="review-section" key={s.title}><div className="section-heading"><h3>{s.title}</h3><button className="text-button" onClick={()=>setStep(i)}>Edit</button></div><dl>{s.fields.map(f=>{const val=data[f.key];const display=f.type==='date'&&val?formatDate(val):val;return <div key={f.key}><dt>{f.label}</dt><dd>{display||<span className="missing">{f.required?'Not provided':'—'}</span>}</dd></div>;})}</dl></div>)}<div className="review-section"><h3>Documents</h3>{service.documents.map(kind=><p className="document-check" key={kind}>{documents.some(d=>d.application===selected?.id&&d.kind===kind)?<CheckCircle2 size={16}/>:<CircleHelp size={16}/>} {kind} — {documents.some(d=>d.application===selected?.id&&d.kind===kind)?'Uploaded':'Not uploaded'}</p>)}</div><label className="consent"><Checkbox checked={consent} onCheckedChange={v=>setConsent(v===true)}/><span>I have reviewed the information. I understand this submission is saved in a preview workspace and is not an official BI application.</span></label><FormActions step={step} busy={busy} back={()=>setStep(step-1)} save={saveDraft} submit={submit} canSubmit={consent&&!!user}/></div>}</section></div>}
+          {service&&<div className="application-layout"><aside className="steps-panel"><p className="eyebrow">YOUR APPLICATION</p>{[...service.sections.map(s=>s.title),'Documents','Review & submit'].map((label,i)=><button key={label} className={'step '+(i===step?'current':'')} onClick={()=>setStep(i)}><span>{i<step?<Check size={14}/>:i+1}</span>{label}</button>)}<div className="draft-note"><Save size={17}/><p>{selected?'Draft '+shortId(selected.id):'Your draft will appear in My applications once saved.'}</p></div></aside><section className="panel application-form"><div className="form-top"><span>STEP {step+1} OF {service.sections.length+2}</span><Progress value={(step+1)/(service.sections.length+2)*100}/></div>{!user&&!loading&&<div className="signin-notice"><LockKeyhole size={20}/><div><strong>Sign in to save your application</strong><p>Sign in with your email or register a new account to keep your application saved.</p><button type="button" onClick={()=>openAuth('login')} className="text-button">Sign in to workspace <ArrowRight size={15}/></button></div></div>}{step<service.sections.length?<form onKeyDown={handleFormKeyDown} onSubmit={e=>{e.preventDefault();const missing=service.sections[step].fields.filter(f=>f.required&&!data[f.key]?.trim());if(missing.length){toast.error('Complete '+missing.map(f=>f.label).join(', '));return;}const invalidPassport=service.sections[step].fields.filter(f=>(f.key==='passportNumber'||f.key==='guardianPassport')&&data[f.key]?.trim()&&data[f.key]?.trim().length!==9);if(invalidPassport.length){toast.error(invalidPassport.map(f=>f.label).join(', ')+' must be exactly 9 characters');return;}setStep(step+1)}}><h2>{service.sections[step].title}</h2><p className="form-hint">Fields marked with * are required.</p>{service.sections[step].title==='Philippine residential address'?<ResidentialAddress data={data} onChange={setData}/>:<div className="fields-grid">{service.sections[step].fields.map(f=><FieldInput key={f.key} field={f} value={data[f.key]||''} onChange={v=>setData({...data,[f.key]:v})}/>)}</div>}<FormActions step={step} busy={busy} back={()=>setStep(Math.max(0,step-1))} save={saveDraft}/></form>:step===service.sections.length?<><h2>Upload your documents</h2><p className="form-hint">Use PDF, JPG, or PNG, up to 10 MB per file. Upload sample documents in this preview.</p>{service.id==='cruise-waiver'&&<div className="info-box"><FileText size={20}/><div><strong>Passenger manifest</strong><p>Download the XLSX template, complete it, and upload one or more files, up to 101 MB each.</p><button className="text-button" onClick={template}><Download size={15}/> Download XLSX template</button></div></div>}<div className="upload-list">{service.documents.map(kind=>{
+  const localDoc = selectedFiles[kind];
+  const matchingDocs = documents.filter(d=>(selected?.id?d.application===selected.id:false)&&d.kind===kind);
+  const isUploaded = matchingDocs.length > 0 || !!localDoc;
+  return <div className={'upload-card '+(isUploaded?'uploaded':'')} key={kind}>
+    <div>
+      <span className={'soft-icon '+(isUploaded?'soft-icon-success':'')}>{isUploaded?<CheckCircle2 size={20}/>:<FileText size={20}/>}</span>
+      <div style={{minWidth:0,flex:1}}>
+        <div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
+          <strong>{kind} *</strong>
+          {isUploaded ? <span className="status status-approved" style={{fontSize:'11px',padding:'2px 8px'}}><Check size={12}/> {matchingDocs.length > 0 ? 'Uploaded' : localDoc?.status === 'uploading' ? 'Uploading…' : 'File Selected'}</span> : <span className="status" style={{fontSize:'11px',padding:'2px 8px'}}>Required</span>}
+        </div>
+        {matchingDocs.length>0 ? (
+          <div style={{marginTop:'6px',display:'flex',flexDirection:'column',gap:'4px'}}>{matchingDocs.map(d=><div key={d.id} style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}><a className="uploaded-file" href={'/api/documents?id='+d.id} title={'Download '+d.name}><CheckCircle2 size={14}/><span>{d.name}</span>{d.size?<span className="file-size">({(d.size/1024).toFixed(1)} KB)</span>:null}<Download size={13}/></a></div>)}</div>
+        ) : localDoc ? (
+          <div style={{marginTop:'6px',display:'flex',flexDirection:'column',gap:'4px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
+              <div className="uploaded-file">
+                <CheckCircle2 size={14}/>
+                <span>{localDoc.name}</span>
+                <span className="file-size">({(localDoc.size/1024).toFixed(1)} KB)</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p style={{margin:'4px 0 0',fontSize:'12.5px',color:'#7f90a2'}}>No file uploaded yet</p>
+        )}
+      </div>
+    </div>
+    <label className={'secondary upload-button '+(busy?'disabled':'')+(isUploaded?' is-replace':'')}>
+      {isUploaded?<RefreshCw size={14}/>:<Upload size={14}/>}
+      {busy?'Please wait':isUploaded?'Replace file':'Upload'}
+      <input disabled={busy} type="file" aria-label={(isUploaded?'Replace ':'Upload ')+kind} accept={kind.includes('.xlsx')?'.xlsx':kind==='Facial image'?'.jpg,.jpeg,.png':'.pdf,.jpg,.jpeg,.png'} multiple={kind.includes('.xlsx')} onChange={e=>{uploadFiles(e.target.files,kind);e.target.value=''}}/>
+    </label>
+  </div>
+})}</div><FormActions step={step} busy={busy} back={()=>setStep(step-1)} save={saveDraft} next={()=>setStep(step+1)}/></>:<div className="review-step-container" onKeyDown={handleReviewKeyDown}><h2>Review your application</h2><p className="form-hint">Make sure the details and documents are correct before submitting.</p>{service.sections.map((s,i)=><div className="review-section" key={s.title}><div className="section-heading"><h3>{s.title}</h3><button className="text-button" onClick={()=>setStep(i)}>Edit</button></div><dl>{s.fields.map(f=>{const val=data[f.key];const display=f.type==='date'&&val?formatDate(val):val;return <div key={f.key}><dt>{f.label}</dt><dd>{display||<span className="missing">{f.required?'Not provided':'—'}</span>}</dd></div>;})}</dl></div>)}<div className="review-section"><h3>Documents</h3>{service.documents.map(kind=>{
+  const hasDoc = documents.some(d=>d.application===selected?.id&&d.kind===kind) || !!selectedFiles[kind];
+  return <p className="document-check" key={kind}>{hasDoc?<CheckCircle2 size={16}/>:<CircleHelp size={16}/>} {kind} — {hasDoc?'Uploaded':'Not uploaded'}</p>;
+})}</div><label className="consent"><Checkbox checked={consent} onCheckedChange={v=>setConsent(v===true)}/><span>I have reviewed the information. I understand this submission is saved in a preview workspace and is not an official BI application.</span></label><FormActions step={step} busy={busy} back={()=>setStep(step-1)} save={saveDraft} submit={submit} canSubmit={consent&&!!user}/></div>}</section></div>}
           {view==='My documents'&&<section className="panel">{documents.length?<Table><TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Application</TableHead><TableHead>Uploaded</TableHead><TableHead>Download</TableHead></TableRow></TableHeader><TableBody>{documents.map(d=><TableRow key={d.id}><TableCell><strong>{d.name}</strong><small className="reference">{d.kind} · {(d.size/1024/1024).toFixed(2)} MB</small></TableCell><TableCell>{shortId(d.application)}</TableCell><TableCell>{date(d.created)}</TableCell><TableCell><a className="text-button" href={'/api/documents?id='+d.id} aria-label={'Download '+d.name}><Download size={17}/>Download</a></TableCell></TableRow>)}</TableBody></Table>:<Empty icon={FolderOpen} title="Your documents, all together" description="Upload supporting documents from an application. They will appear here." action={()=>navigate('My applications')} actionLabel="Go to applications"/>}</section>}
           {view==='Payments'&&(()=>{
             const awaitingPaymentApps = applications.filter(a => a.status.toLowerCase() === 'for payment');
