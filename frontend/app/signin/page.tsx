@@ -15,7 +15,8 @@ export default function SignIn() {
       body: JSON.stringify({ email, name }),
     });
     const params = new URLSearchParams(window.location.search);
-    router.push(params.get('return_to') || '/');
+    const returnTo = params.get('return_to');
+    router.push(returnTo && returnTo.startsWith('/') ? returnTo : '/');
   }
 
   return (
